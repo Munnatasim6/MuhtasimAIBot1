@@ -1,40 +1,45 @@
 import logging
 import asyncio
 import json
-import subprocess
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+
+# Existing Core Imports
 from backend.brain.swarm_manager import SwarmManager
-from core.data_nexus import DataNexus
+from core.scrapers.social_scraper import SocialScraper
 from core.macro_correlator import MacroCorrelator
 from core.meta_brain.evolution import EvolutionEngine
 
-# Singularity Module Imports (Phase 1)
+# Singularity Module Imports
 from core.meta_brain.local_llm import LocalStrategyGenerator
 from core.scrapers.dao_tracker import GovernanceWatcher
 from web3_modules.liquidation_bot import LiquidationMonitor
 from core.aggregator.global_book import GlobalLiquidityWall
-
-# Singularity Module Imports (Phase 2 - Free Tier)
 from core.macro.trends_engine import TrendsEngine
 from web3_modules.stablecoin_watch import StablecoinWatch
 from core.fundamental.github_tracker import GithubTracker
 from web3_modules.exchange_flow import ExchangeFlow
 
-# --- MARKET MAKER GRADE UPGRADE (NEW IMPORTS) ---
+# Market Maker Grade Imports (Previous Upgrade)
 from core.fundamental.defillama_tracker import DefiLlamaTracker
 from core.market.options_sentiment import OptionsSentiment
 from strategies.funding_arb import FundingArbScanner
 from web3_modules.gas_watcher import GasWatcher
 from core.macro.correlation_engine import CorrelationEngine
-# -----------------------------------------------
+
+# --- ULTIMATE HEDGE FUND UPGRADE (NEW MODULES) ---
+from core.macro.news_trader import NewsTrader
+from core.scrapers.telegram_alpha import TelegramAlpha
+from web3_modules.bridge_watcher import BridgeWatcher
+from web3_modules.graph_liquidity import GraphLiquidityAnalyzer
+from core.scrapers.discord_sentiment import DiscordSentiment
+# ------------------------------------------------
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OmniTradeCore")
 
-app = FastAPI(title="OmniTrade AI Core", version="3.0.0 (Market Maker Grade)")
+app = FastAPI(title="OmniTrade AI Core", version="4.0.0 (Ultimate Hedge Fund)")
 
 # CORS
 app.add_middleware(
@@ -45,112 +50,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Swarm Manager
+# Initialize All Managers
 swarm_manager = SwarmManager()
-
-# Initialize Data Nexus (Listener)
-data_nexus = DataNexus()
-
-# Initialize Singularity Modules
+social_scraper = SocialScraper()
 macro_correlator = MacroCorrelator()
 evolution_engine = EvolutionEngine()
-local_llm = LocalStrategyGenerator() # Assumes Ollama is running
+local_llm = LocalStrategyGenerator() 
 governance_watcher = GovernanceWatcher()
 global_liquidity = GlobalLiquidityWall()
-
-# Phase 2 Modules
 trends_engine = TrendsEngine()
 github_tracker = GithubTracker()
 
-# --- MARKET MAKER MODULE INITIALIZATION ---
+# Initialize Market Maker Modules
 defillama_tracker = DefiLlamaTracker()
 options_sentiment = OptionsSentiment()
 funding_scanner = FundingArbScanner()
 gas_watcher = GasWatcher()
 correlation_engine = CorrelationEngine()
-# -------------------------------------------
 
-# Config for Web3 Modules (Public RPCs)
+# Initialize Ultimate Modules
+news_trader = NewsTrader()
+telegram_alpha = TelegramAlpha()
+# Ensure you have a valid RPC for BridgeWatcher
+bridge_watcher = BridgeWatcher(rpc_url="https://eth.public-rpc.com") 
+graph_analyzer = GraphLiquidityAnalyzer()
+discord_sentiment = DiscordSentiment()
+
+# Config for Web3 Modules
 POLYGON_RPC = "https://polygon-rpc.com"
 ETH_RPC = "https://eth.public-rpc.com"
-
 AAVE_V3_POOL_POLYGON = "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
 liquidation_monitor = LiquidationMonitor(POLYGON_RPC, AAVE_V3_POOL_POLYGON)
 stablecoin_watch = StablecoinWatch(ETH_RPC)
 exchange_flow = ExchangeFlow(ETH_RPC)
 
-class ScaleRequest(BaseModel):
-    replicas: int
-
-@app.post("/api/system/scale-scraper")
-async def scale_scraper(request: ScaleRequest):
-    """
-    Scales the scraper microservice.
-    Minimum replicas: 4
-    """
-    if request.replicas < 4:
-        raise HTTPException(status_code=400, detail="Minimum scraper count is 4.")
-    
-    logger.info(f"⚖️ Scaling Scraper Service to {request.replicas} replicas...")
-    
-    try:
-        # Execute docker compose scale command
-        # Note: This requires the container to have access to the host docker socket
-        # and the docker CLI installed.
-        cmd = [
-            "docker", "compose", "-f", "/app/docker-compose.yml", 
-            "up", "-d", "--scale", f"scraper={request.replicas}", "--no-recreate"
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            logger.error(f"Docker Scale Error: {result.stderr}")
-            raise HTTPException(status_code=500, detail=f"Scaling failed: {result.stderr}")
-            
-        logger.info("✅ Scaling successful.")
-        return {"status": "success", "replicas": request.replicas, "message": "Scraper scaled successfully."}
-        
-    except Exception as e:
-        logger.error(f"Scaling Exception: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Starting OmniTrade AI Core (Singularity Level - Phase 2)...")
-    # Start Data Nexus (Listener)
-    asyncio.create_task(data_nexus.start())
+    logger.info("🚀 Starting OmniTrade AI Core (Ultimate Hedge Fund Level)...")
     
-    # Start Macro Analysis Background Task
+    # --- 1. Start Singularity & Core Tasks ---
+    asyncio.create_task(social_scraper.start_stream())
     asyncio.create_task(run_macro_analysis())
-    
-    # Start Evolution Engine Background Task
     asyncio.create_task(run_evolution_cycle())
-
-    # Start Singularity Background Tasks (Phase 1)
     asyncio.create_task(run_governance_watch())
     asyncio.create_task(run_liquidity_monitor())
     asyncio.create_task(run_global_book_analysis())
-    
-    # Start Singularity Background Tasks (Phase 2)
     asyncio.create_task(run_trends_analysis())
     asyncio.create_task(run_stablecoin_watch())
     asyncio.create_task(run_github_tracking())
     asyncio.create_task(run_exchange_flow_monitor())
     
-    # --- NEW MARKET MAKER TASKS ---
+    # --- 2. Start Market Maker Tasks ---
     asyncio.create_task(run_defillama_tracker())
     asyncio.create_task(run_options_sentiment())
     asyncio.create_task(run_funding_arb_scan())
     asyncio.create_task(run_gas_watcher())
     asyncio.create_task(run_correlation_engine())
-    logger.info("New Market Maker Modules Activated: DeFiLlama, Options, Funding Arb, Gas, Macro Matrix.")
+    
+    # --- 3. Start Ultimate Hedge Fund Tasks ---
+    asyncio.create_task(run_news_trader())
+    asyncio.create_task(run_bridge_watcher())
+    asyncio.create_task(run_graph_analyzer())
+    
+    # Note: Telegram and Discord require blocking loops or specific handling
+    # launching them as tasks works but they need credentials to be active.
+    asyncio.create_task(telegram_alpha.start()) 
+    asyncio.create_task(discord_sentiment.start_service())
+    
+    logger.info("✅ All Systems Operational: Alpha, Macro, Web3, & Sentiment Active.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down...")
-    await data_nexus.stop()
-
 # --- NEW MARKET MAKER BACKGROUND TASKS ---
 
 async def run_defillama_tracker():
@@ -289,9 +260,30 @@ async def run_exchange_flow_monitor():
             logger.error(f"Exchange Flow Monitor failed: {e}")
         await asyncio.sleep(15)
 
+async def run_news_trader():
+    """Polls economic calendar every 5 minutes."""
+    while True:
+        try: await news_trader.run_cycle()
+        except Exception as e: logger.error(f"News Trader failed: {e}")
+        await asyncio.sleep(300) 
+
+async def run_bridge_watcher():
+    """Checks L2 bridges every minute."""
+    while True:
+        try: await bridge_watcher.run_cycle()
+        except Exception as e: logger.error(f"Bridge Watcher failed: {e}")
+        await asyncio.sleep(60)
+
+async def run_graph_analyzer():
+    """Checks DEX liquidity every hour."""
+    while True:
+        try: await graph_analyzer.run_cycle()
+        except Exception as e: logger.error(f"Graph Analyzer failed: {e}")
+        await asyncio.sleep(3600)
+
 @app.get("/")
 def read_root():
-    return {"status": "active", "system": "OmniTrade AI Core v3.0", "level": "Market Maker Grade"}
+    return {"status": "active", "system": "OmniTrade AI Core v4.0", "level": "Ultimate Hedge Fund"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

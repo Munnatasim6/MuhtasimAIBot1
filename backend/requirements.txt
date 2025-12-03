@@ -57,7 +57,14 @@ requests>=2.28.0
 # maturin>=1.0.0
 # pyo3>=0.19.0
 
+
 # Utils & Infrastructure
 # prometheus-client>=0.16.0
 # networkx
 # pyserial
+
+# Ultimate Hedge Fund Modules
+beautifulsoup4>=4.10.0
+telethon>=1.24.0
+discord.py>=2.0.0
+gql>=3.4.0
