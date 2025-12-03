@@ -1,58 +1,50 @@
 import logging
-import ccxt
 import asyncio
+import ccxt.async_support as ccxt # Async version of ccxt
 
 logger = logging.getLogger("OmniTrade.FundingArb")
 
 class FundingArbScanner:
     def __init__(self):
-        # Using Binance Public API for funding rates
         self.exchange = ccxt.binance({'enableRateLimit': True})
-        self.min_funding_rate_threshold = 0.001  # 0.1% per 8h
+        self.min_rate = 0.001 # 0.1% per 8 hours
 
     async def scan_opportunities(self):
-        """Scans for high funding rates to propose Delta Neutral trades."""
-        logger.info("Scanning for Delta Neutral Funding Arbitrage...")
+        """
+        Scans for funding arbitrage opportunities.
+        Strategy: Buy Spot + Sell Perp (Delta Neutral).
+        Profit source: Funding Fees.
+        """
         try:
-            # Fetch all tickers (includes funding data in 'info' for some exchanges, 
-            # but safer to fetch funding rates specifically)
-            # CCXT unify fetchFundingRates
-            funding_rates = self.exchange.fetch_funding_rates()
+            logger.info("Scanning for Funding Arbitrage Opportunities...")
+            # Fetch funding rates
+            funding_rates = await self.exchange.fetch_funding_rates()
             
             opportunities = []
-
+            
             for symbol, data in funding_rates.items():
                 rate = data.get('fundingRate')
-                
-                # IMPLEMENTING YOUR SPECIFIC LOGIC:
-                # Identify coins with Funding Rate > 0.1% (0.001)
-                if rate and rate > self.min_funding_rate_threshold:
-                    
-                    # Logic Explanation for AI:
-                    # Positive Funding = Longs pay Shorts.
-                    # Strategy: Buy Spot (Long) + Sell Future (Short) equal amount.
-                    # Price movement cancels out (Delta Neutral).
-                    # Profit = Funding Fees collected from the Short position.
-                    
-                    annualized_apr = rate * 3 * 365 * 100 # Approx 3 payments a day
+                if rate and rate > self.min_rate:
+                    # Annualized Return = Rate * 3 (intervals/day) * 365
+                    apy = rate * 3 * 365 * 100
                     
                     opp = {
                         "symbol": symbol,
-                        "funding_rate_8h": rate * 100,
-                        "annualized_apr": annualized_apr,
-                        "strategy": "DELTA_NEUTRAL_CARRY",
-                        "action": f"BUY SPOT {symbol} + SHORT PERP {symbol}"
+                        "rate_8h": f"{rate*100:.4f}%",
+                        "estimated_apy": f"{apy:.2f}%",
+                        "action": "OPEN DELTA NEUTRAL POSITION"
                     }
                     opportunities.append(opp)
-                    logger.info(f"ARB FOUND: {symbol} | Rate: {rate*100:.4f}% | APR: {annualized_apr:.1f}%")
+                    logger.info(f"💰 ARB FOUND: {symbol} | Rate: {opp['rate_8h']} | APY: {opp['estimated_apy']}")
 
-            # Sort by highest APR
-            opportunities.sort(key=lambda x: x['annualized_apr'], reverse=True)
-            return opportunities[:5] # Return top 5
+            return opportunities
 
         except Exception as e:
             logger.error(f"Funding Scan Error: {e}")
-            return []
+        finally:
+            await self.exchange.close()
 
     async def run_cycle(self):
-        await self.scan_opportunities()
+        while True:
+            await self.scan_opportunities()
+            await asyncio.sleep(14400) # Check every 4 hours

@@ -5,41 +5,51 @@ from web3 import Web3
 logger = logging.getLogger("OmniTrade.BridgeWatcher")
 
 class BridgeWatcher:
-    def __init__(self, rpc_url):
-        self.w3 = Web3(Web3.HTTPProvider(rpc_url))
+    def __init__(self):
+        # Using a free public RPC for Ethereum Mainnet (Cloudflare/PublicNode)
+        self.rpc_url = "https://eth.merkle.io" 
+        self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
         
-        # Contract Addresses (ETH Mainnet)
+        # Contract Addresses (ETH Mainnet Gateways)
         self.bridges = {
-            "Arbitrum": "0x4Dbd4fc535Ac27206064B68FfCf82747f9692144", # Canonical Inbox
-            "Optimism": "0x99C9fc46f92E8a1c0dEC1b1747d7109ca542c038", # Optimism Portal
-            "Base": "0x49048044D57e1C92A77f79988d21Fa8fAF74E97e"
+            "Arbitrum": "0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a", # Arbitrum One Bridge
+            "Optimism": "0x99C9fc46f92E8a1c0dEC1b1747d7109ca542c038"  # Optimism Portal
         }
         
-        # Threshold for "Massive Inflow" (e.g., 500 ETH)
-        self.whale_threshold = 500 * 10**18 
+        self.last_balances = {}
 
-    async def check_inflows(self):
+    async def monitor_inflow(self):
         """
-        Monitors ETH balances of bridge contracts to detect spikes.
-        Rising Bridge Balance = Money flowing TO that L2.
+        Monitors ETH balance of bridge contracts.
+        Significant increase = Money flowing INTO L2 = Bullish for L2 Tokens.
         """
-        try:
-            for name, address in self.bridges.items():
-                balance = self.w3.eth.get_balance(address)
+        if not self.w3.is_connected():
+            logger.warning("Web3 RPC not connected. Retrying...")
+            return
+
+        for chain, address in self.bridges.items():
+            try:
+                # Run sync web3 call in executor to not block async loop
+                loop = asyncio.get_event_loop()
+                balance_wei = await loop.run_in_executor(None, self.w3.eth.get_balance, address)
+                balance_eth = self.w3.from_wei(balance_wei, 'ether')
                 
-                # Logic: Compare with stored previous balance (mocked here for simplicity)
-                # In production: store in Redis and compare delta
+                prev_balance = self.last_balances.get(chain, balance_eth)
+                delta = balance_eth - prev_balance
                 
-                logger.info(f"L2 Bridge {name}: TVL {self.w3.from_wei(balance, 'ether'):.2f} ETH")
+                # Logic: If > 1000 ETH flows in within check interval
+                if delta > 1000:
+                    logger.warning(f"🚀 BRIDGE ALERT: {chain} Inflow Detected!")
+                    logger.warning(f"Amount: {delta:.2f} ETH. Signal: {chain.upper()} ROTATION SEASON.")
                 
-                # Detect simulation of a mock huge deposit event logic could be added here
-                # accessing filter logs for 'DepositInitiated' events.
-                
-        except Exception as e:
-            logger.error(f"Bridge Watcher Error: {e}")
+                self.last_balances[chain] = balance_eth
+                logger.info(f"Bridge Status [{chain}]: {balance_eth:.2f} ETH (Delta: {delta:.4f})")
+
+            except Exception as e:
+                logger.error(f"Error monitoring {chain} bridge: {e}")
 
     async def run_cycle(self):
-        logger.info("Scanning L2 Bridges for Rotation...")
+        """Polls every 60 seconds."""
         while True:
-            await self.check_inflows()
-            await asyncio.sleep(60) # Check every minute
+            await self.monitor_inflow()
+            await asyncio.sleep(60)

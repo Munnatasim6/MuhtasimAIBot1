@@ -1,47 +1,40 @@
 import logging
-import requests
+import aiohttp
 import asyncio
-import time
 
 logger = logging.getLogger("OmniTrade.GasWatcher")
 
 class GasWatcher:
     def __init__(self):
-        self.mempool_api = "https://mempool.space/api/v1/fees/recommended"
-        self.last_gas_price = None
-        self.spike_threshold = 2.0  # 2x increase implies spike
+        self.api_url = "https://mempool.space/api/v1/fees/recommended"
+        self.last_fast_fee = 0
+        self.alert_threshold_pct = 50.0 # 50% spike
 
-    async def fetch_gas_price(self):
-        """Fetch current Bitcoin/Eth gas fees (Using Mempool for BTC/Eth representation)."""
-        try:
-            response = requests.get(self.mempool_api)
-            if response.status_code == 200:
-                # mempool.space is Bitcoin, for ETH we would use EthGasStation or RPC.
-                # Assuming this monitors 'Network Activity' generically using free APIs.
-                return response.json().get('fastestFee')
-            return None
-        except Exception as e:
-            logger.error(f"Gas fetch error: {e}")
-            return None
-
-    async def monitor_network(self):
-        """
-        Logic: Detect 'Sudden Spikes' (e.g. Price doubles).
-        High Activity = Leading indicator for volatility.
-        """
-        current_gas = await self.fetch_gas_price()
-        
-        if current_gas and self.last_gas_price:
-            ratio = current_gas / self.last_gas_price
-            
-            # IMPLEMENTING YOUR SPECIFIC LOGIC:
-            if ratio >= self.spike_threshold:
-                logger.warning(f"🚨 NETWORK ALERT: Gas Spiked {ratio:.1f}x! (Previous: {self.last_gas_price}, Now: {current_gas})")
-                logger.warning("-> High Network Activity Detected (Possible Mint/Pump)")
-            
-        if current_gas:
-            self.last_gas_price = current_gas
+    async def check_gas(self):
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(self.api_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        fast_fee = data.get("fastestFee", 0)
+                        
+                        if self.last_fast_fee > 0:
+                            change = ((fast_fee - self.last_fast_fee) / self.last_fast_fee) * 100
+                            
+                            # Signal Logic
+                            if change > self.alert_threshold_pct:
+                                logger.warning(f"⛽ GAS SPIKE ALERT: Fees up {change:.1f}% in last cycle!")
+                                logger.warning("-> Signal: HIGH NETWORK ACTIVITY (Possible NFT Mint/DEX Pump)")
+                        
+                        self.last_fast_fee = fast_fee
+                        logger.info(f"Current Gas (Sat/vB): {fast_fee}")
+                    else:
+                        logger.warning("Failed to fetch gas data")
+            except Exception as e:
+                logger.error(f"Gas Watcher Error: {e}")
 
     async def run_cycle(self):
-        """Polls every 30 seconds."""
-        await self.monitor_network()
+        """Polls every 5 minutes."""
+        while True:
+            await self.check_gas()
+            await asyncio.sleep(300) # 5 minutes
