@@ -1,10 +1,12 @@
 import logging
 import asyncio
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import subprocess
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from backend.brain.swarm_manager import SwarmManager
-from core.scrapers.social_scraper import SocialScraper
+from core.data_nexus import DataNexus
 from core.macro_correlator import MacroCorrelator
 from core.meta_brain.evolution import EvolutionEngine
 
@@ -20,11 +22,19 @@ from web3_modules.stablecoin_watch import StablecoinWatch
 from core.fundamental.github_tracker import GithubTracker
 from web3_modules.exchange_flow import ExchangeFlow
 
+# --- MARKET MAKER GRADE UPGRADE (NEW IMPORTS) ---
+from core.fundamental.defillama_tracker import DefiLlamaTracker
+from core.market.options_sentiment import OptionsSentiment
+from strategies.funding_arb import FundingArbScanner
+from web3_modules.gas_watcher import GasWatcher
+from core.macro.correlation_engine import CorrelationEngine
+# -----------------------------------------------
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OmniTradeCore")
 
-app = FastAPI(title="OmniTrade AI Core", version="2.2.0 (Singularity Free Tier)")
+app = FastAPI(title="OmniTrade AI Core", version="3.0.0 (Market Maker Grade)")
 
 # CORS
 app.add_middleware(
@@ -38,8 +48,8 @@ app.add_middleware(
 # Initialize Swarm Manager
 swarm_manager = SwarmManager()
 
-# Initialize Social Scraper
-social_scraper = SocialScraper()
+# Initialize Data Nexus (Listener)
+data_nexus = DataNexus()
 
 # Initialize Singularity Modules
 macro_correlator = MacroCorrelator()
@@ -52,6 +62,14 @@ global_liquidity = GlobalLiquidityWall()
 trends_engine = TrendsEngine()
 github_tracker = GithubTracker()
 
+# --- MARKET MAKER MODULE INITIALIZATION ---
+defillama_tracker = DefiLlamaTracker()
+options_sentiment = OptionsSentiment()
+funding_scanner = FundingArbScanner()
+gas_watcher = GasWatcher()
+correlation_engine = CorrelationEngine()
+# -------------------------------------------
+
 # Config for Web3 Modules (Public RPCs)
 POLYGON_RPC = "https://polygon-rpc.com"
 ETH_RPC = "https://eth.public-rpc.com"
@@ -61,11 +79,47 @@ liquidation_monitor = LiquidationMonitor(POLYGON_RPC, AAVE_V3_POOL_POLYGON)
 stablecoin_watch = StablecoinWatch(ETH_RPC)
 exchange_flow = ExchangeFlow(ETH_RPC)
 
+class ScaleRequest(BaseModel):
+    replicas: int
+
+@app.post("/api/system/scale-scraper")
+async def scale_scraper(request: ScaleRequest):
+    """
+    Scales the scraper microservice.
+    Minimum replicas: 4
+    """
+    if request.replicas < 4:
+        raise HTTPException(status_code=400, detail="Minimum scraper count is 4.")
+    
+    logger.info(f"⚖️ Scaling Scraper Service to {request.replicas} replicas...")
+    
+    try:
+        # Execute docker compose scale command
+        # Note: This requires the container to have access to the host docker socket
+        # and the docker CLI installed.
+        cmd = [
+            "docker", "compose", "-f", "/app/docker-compose.yml", 
+            "up", "-d", "--scale", f"scraper={request.replicas}", "--no-recreate"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"Docker Scale Error: {result.stderr}")
+            raise HTTPException(status_code=500, detail=f"Scaling failed: {result.stderr}")
+            
+        logger.info("✅ Scaling successful.")
+        return {"status": "success", "replicas": request.replicas, "message": "Scraper scaled successfully."}
+        
+    except Exception as e:
+        logger.error(f"Scaling Exception: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting OmniTrade AI Core (Singularity Level - Phase 2)...")
-    # Start Social Scraper
-    asyncio.create_task(social_scraper.start_stream())
+    # Start Data Nexus (Listener)
+    asyncio.create_task(data_nexus.start())
     
     # Start Macro Analysis Background Task
     asyncio.create_task(run_macro_analysis())
@@ -83,11 +137,68 @@ async def startup_event():
     asyncio.create_task(run_stablecoin_watch())
     asyncio.create_task(run_github_tracking())
     asyncio.create_task(run_exchange_flow_monitor())
+    
+    # --- NEW MARKET MAKER TASKS ---
+    asyncio.create_task(run_defillama_tracker())
+    asyncio.create_task(run_options_sentiment())
+    asyncio.create_task(run_funding_arb_scan())
+    asyncio.create_task(run_gas_watcher())
+    asyncio.create_task(run_correlation_engine())
+    logger.info("New Market Maker Modules Activated: DeFiLlama, Options, Funding Arb, Gas, Macro Matrix.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down...")
-    await social_scraper.stop_stream()
+    await data_nexus.stop()
+
+# --- NEW MARKET MAKER BACKGROUND TASKS ---
+
+async def run_defillama_tracker():
+    """Checks protocol health/undervalued gems daily."""
+    while True:
+        try:
+            await defillama_tracker.run_cycle()
+        except Exception as e:
+            logger.error(f"DeFiLlama Tracker failed: {e}")
+        await asyncio.sleep(86400) # Daily
+
+async def run_options_sentiment():
+    """Checks options flows hourly."""
+    while True:
+        try:
+            await options_sentiment.run_cycle()
+        except Exception as e:
+            logger.error(f"Options Sentiment failed: {e}")
+        await asyncio.sleep(3600) # Hourly
+
+async def run_funding_arb_scan():
+    """Scans for funding arbitrage every 4 hours."""
+    while True:
+        try:
+            await funding_scanner.run_cycle()
+        except Exception as e:
+            logger.error(f"Funding Arb Scan failed: {e}")
+        await asyncio.sleep(14400) # 4 Hours
+
+async def run_gas_watcher():
+    """Watches gas prices in real-time (every 30s)."""
+    while True:
+        try:
+            await gas_watcher.run_cycle()
+        except Exception as e:
+            logger.error(f"Gas Watcher failed: {e}")
+        await asyncio.sleep(30)
+
+async def run_correlation_engine():
+    """Calculates macro correlations daily."""
+    while True:
+        try:
+            await correlation_engine.run_cycle()
+        except Exception as e:
+            logger.error(f"Correlation Engine failed: {e}")
+        await asyncio.sleep(86400) # Daily (Market Close)
+
+# -----------------------------------------
 
 async def run_macro_analysis():
     """Background task to update macro correlations periodically."""
@@ -180,7 +291,7 @@ async def run_exchange_flow_monitor():
 
 @app.get("/")
 def read_root():
-    return {"status": "active", "system": "OmniTrade AI Core v2.2", "level": "Singularity Free Tier"}
+    return {"status": "active", "system": "OmniTrade AI Core v3.0", "level": "Market Maker Grade"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

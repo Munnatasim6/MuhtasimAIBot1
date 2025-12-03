@@ -18,6 +18,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - trading_net
 
   redis:
     image: redis:alpine
@@ -27,6 +29,8 @@ services:
     volumes:
       - redis_data:/data
     restart: always
+    networks:
+      - trading_net
 
   backend:
     build:
@@ -37,12 +41,41 @@ services:
       - "8000:8000"
     env_file:
       - .env.docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/app/docker-compose.yml
     depends_on:
       timescaledb:
         condition: service_healthy
       redis:
         condition: service_started
     restart: always
+    networks:
+      - trading_net
+
+  scraper:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    # container_name: omnitrade_scraper # Removed to allow scaling
+    command: python core/scrapers/social_scraper.py
+    deploy:
+      mode: replicated
+      replicas: 4
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TARGET_KEYWORDS=Bitcoin,Ethereum,BTC,ETH
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+    restart: always
+    networks:
+      - trading_net
 
   frontend:
     build:
@@ -54,7 +87,14 @@ services:
     depends_on:
       - backend
     restart: always
+    networks:
+      - trading_net
 
 volumes:
   timescaledb_data:
   redis_data:
+
+
+networks:
+  trading_net:
+    driver: bridge
