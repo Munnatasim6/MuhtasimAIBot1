@@ -5,25 +5,26 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Existing Modules (Preserved)
+# Existing Modules (Preserved)
 from backend.brain.swarm_manager import SwarmManager
 from core.scrapers.social_scraper import SocialScraper
 from core.macro_correlator import MacroCorrelator
 from core.meta_brain.evolution import EvolutionEngine
 from core.meta_brain.local_llm import LocalStrategyGenerator
 from core.scrapers.dao_tracker import GovernanceWatcher
-from web3_modules.liquidation_bot import LiquidationMonitor
+from liquidation_bot import LiquidationMonitor
 from core.aggregator.global_book import GlobalLiquidityWall
 from core.macro.trends_engine import TrendsEngine
-from web3_modules.stablecoin_watch import StablecoinWatch
+from stablecoin_watch import StablecoinWatch
 from core.fundamental.github_tracker import GithubTracker
-from web3_modules.exchange_flow import ExchangeFlow
+from exchange_flow import ExchangeFlow
 
 # --- ULTIMATE HEDGE FUND UPGRADE (7 NEW MODULES) ---
 from core.fundamental.defillama_tracker import DefiLlamaTracker
-from web3_modules.bridge_watcher import BridgeWatcher
-from web3_modules.gas_watcher import GasWatcher
+from bridge_watcher import BridgeWatcher
+from gas_watcher import GasWatcher
 from core.market.options_sentiment import OptionsSentiment
-from strategies.funding_arb import FundingArbScanner
+from funding_arb import FundingArbScanner
 from core.macro.news_trader import NewsTrader
 from core.scrapers.alpha_scout import AlphaScout
 # ---------------------------------------------------

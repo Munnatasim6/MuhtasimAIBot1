@@ -4,7 +4,7 @@ import json
 import redis.asyncio as redis
 import os
 from core.cex_feed import CEXFeed
-from web3_modules.on_chain import OnChainMonitor
+from on_chain import OnChainMonitor
 from core.sentiment import SentimentEngine
 
 logger = logging.getLogger(__name__)
